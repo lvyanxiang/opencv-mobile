@@ -214,7 +214,7 @@ jobs:
 
         patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-no-rtti.patch
         patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-no-zlib.patch
-        patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-link-openmp.patch
+        # patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-link-openmp.patch  # Disabled OpenMP
         patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-fix-windows-arm-arch.patch
         patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-minimal-install.patch
         cp ../patches/draw_text.h ../patches/mono_font_data.h modules/imgproc/src/
