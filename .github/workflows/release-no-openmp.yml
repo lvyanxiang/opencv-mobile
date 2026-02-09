@@ -171,7 +171,7 @@ jobs:
         cd ${{ env.SOURCE_DIR }}
         mkdir -p sdk/native/jni/include
         mkdir -p sdk/native/jni/abi
-        cp -r install/include/* sdk/native/jni/include/
+        cp -r build-arm64-v8a/install/include/* sdk/native/jni/include/
         cp build-armeabi-v7a/install/lib/*.a sdk/native/jni/abi/armeabi-v7a/
         cp build-arm64-v8a/install/lib/*.a sdk/native/jni/abi/arm64-v8a/
         cp build-x86/install/lib/*.a sdk/native/jni/abi/x86/
