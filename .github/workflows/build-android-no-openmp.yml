@@ -26,10 +26,13 @@ jobs:
     - uses: actions/checkout@v6
     - name: download-opencv4-source
       run: |
+        set -e  # 任何错误立即退出
         wget -q https://github.com/opencv/opencv/archive/4.13.0.zip -O opencv-4.13.0.zip
         unzip -q opencv-4.13.0.zip
         rm opencv-4.13.0.zip
         cd opencv-4.13.0
+        echo "Current directory: $(pwd)"
+        ls -la CMakeLists.txt
         truncate -s 0 cmake/OpenCVFindLibsGrfmt.cmake
         rm -rf modules/gapi
         truncate -s 0 cmake/platforms/OpenCV-Linux.cmake
@@ -96,6 +99,20 @@ jobs:
         cp ../opencv4_cmake_options_no_openmp.txt ./options.txt
         cd ..
         mv opencv-4.13.0 opencv-mobile-4.13.0-no-openmp
+
+    - name: verify-source
+      run: |
+        echo "=== Verifying source directory ==="
+        ls -la opencv-mobile-4.13.0-no-openmp/
+        echo ""
+        echo "=== Checking CMakeLists.txt ==="
+        ls -la opencv-mobile-4.13.0-no-openmp/CMakeLists.txt
+        echo ""
+        echo "=== Checking options.txt ==="
+        ls -la opencv-mobile-4.13.0-no-openmp/options.txt
+        echo ""
+        echo "=== First few lines of CMakeLists.txt ==="
+        head -5 opencv-mobile-4.13.0-no-openmp/CMakeLists.txt
 
     - name: build-armeabi-v7a
       run: |
