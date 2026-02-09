@@ -1,37 +1,35 @@
-name: release-no-openmp
+name: build-android-no-openmp
 on:
+  workflow_dispatch:
   push:
     tags:
       - '*'
-  workflow_dispatch:
 
 env:
-  DEVELOPER_DIR: /Applications/Xcode_15.2.app/Contents/Developer
-  IOS_DEPLOYMENT_TARGET: '13.0'
-  MAC_DEPLOYMENT_TARGET: '11.0'
-  EMSCRIPTEN_VERSION: 3.1.28
+  COMMON_CMAKE_OPTIONS: |
+    -DCMAKE_POLICY_DEFAULT_CMP0057=NEW \
+    -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake \
+    -DANDROID_USE_LEGACY_TOOLCHAIN_FILE=False \
+    -DANDROID_PLATFORM=android-21 \
+    -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
+    -DANDROID_CPP_FEATURES="no-rtti no-exceptions" \
+    -DCMAKE_INSTALL_PREFIX=install \
+    -DCMAKE_BUILD_TYPE=Release
 
 permissions:
   contents: read
 
 jobs:
-  setup:
+  android:
     runs-on: ubuntu-latest
-    outputs:
-      VERSION: ${{ steps.get_version.outputs.VERSION }}
     steps:
     - uses: actions/checkout@v6
-    - name: get-version
-      id: get_version
-      run: echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
-    - name: opencv4-source-no-openmp
-      env:
-        opencv-version: 4.13.0
+    - name: download-opencv4-source
       run: |
-        wget -q https://github.com/opencv/opencv/archive/${{ env.opencv-version }}.zip -O opencv-${{ env.opencv-version }}.zip
-        unzip -q opencv-${{ env.opencv-version }}.zip
-        rm opencv-${{ env.opencv-version }}.zip
-        cd opencv-${{ env.opencv-version }}
+        wget -q https://github.com/opencv/opencv/archive/4.13.0.zip -O opencv-4.13.0.zip
+        unzip -q opencv-4.13.0.zip
+        rm opencv-4.13.0.zip
+        cd opencv-4.13.0
         truncate -s 0 cmake/OpenCVFindLibsGrfmt.cmake
         rm -rf modules/gapi
         truncate -s 0 cmake/platforms/OpenCV-Linux.cmake
@@ -74,17 +72,17 @@ jobs:
         find modules -type f | xargs -i sed -i '/ovx.hpp/d' {}
         find modules -type f | xargs -i sed -i '/va_intel.hpp/d' {}
 
-        patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-no-gpu.patch
-        patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-no-rtti.patch
-        patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-no-zlib.patch
-        # 跳过 link-openmp.patch - 不使用 OpenMP
-        patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-fix-windows-arm-arch.patch
-        patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-minimal-install.patch
-        patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-no-atomic.patch
-        patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-unsafe-xadd.patch
+        patch -p1 -i ../patches/opencv-4.13.0-no-gpu.patch
+        patch -p1 -i ../patches/opencv-4.13.0-no-rtti.patch
+        patch -p1 -i ../patches/opencv-4.13.0-no-zlib.patch
+        # 不应用 link-openmp.patch - 禁用 OpenMP
+        patch -p1 -i ../patches/opencv-4.13.0-fix-windows-arm-arch.patch
+        patch -p1 -i ../patches/opencv-4.13.0-minimal-install.patch
+        patch -p1 -i ../patches/opencv-4.13.0-no-atomic.patch
+        patch -p1 -i ../patches/opencv-4.13.0-unsafe-xadd.patch
         cp ../patches/draw_text.h ../patches/mono_font_data.h modules/imgproc/src/
         cp ../patches/fontface.html ./
-        patch -p1 -i ../patches/opencv-${{ env.opencv-version }}-drawing-mono-font.patch
+        patch -p1 -i ../patches/opencv-4.13.0-drawing-mono-font.patch
         rm -rf modules/highgui
         cp -r ../highgui modules/
         rm -rf 3rdparty
@@ -94,91 +92,58 @@ jobs:
         rm -rf modules/python
         rm -rf modules/ts
         rm -rf modules/dnn
-        sed -e 's/__VERSION__/${{ env.opencv-version }}/g' ../patches/Info.plist > ./Info.plist
+        sed -e 's/__VERSION__/4.13.0/g' ../patches/Info.plist > ./Info.plist
         cp ../opencv4_cmake_options_no_openmp.txt ./options.txt
-        cp -r ../toolchains .
         cd ..
-        mv opencv-${{ env.opencv-version }} opencv-mobile-${{ env.opencv-version }}-no-openmp
-        zip -9 -r opencv-mobile-${{ env.opencv-version }}-no-openmp.zip opencv-mobile-${{ env.opencv-version }}-no-openmp
-    - name: upload-opencv4-source-no-openmp
-      uses: actions/upload-artifact@v6
-      with:
-        name: opencv-mobile-4.13.0-no-openmp-source
-        path: opencv-mobile-4.13.0-no-openmp.zip
+        mv opencv-4.13.0 opencv-mobile-4.13.0-no-openmp
 
-  android:
-    needs: [setup]
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        opencv-version: [4.13.0]
-    env:
-      COMMON_CMAKE_OPTIONS: |
-        -DCMAKE_POLICY_DEFAULT_CMP0057=NEW \
-        -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake \
-        -DANDROID_USE_LEGACY_TOOLCHAIN_FILE=False \
-        -DANDROID_PLATFORM=android-21 \
-        -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
-        -DANDROID_CPP_FEATURES="no-rtti no-exceptions" \
-        -DCMAKE_INSTALL_PREFIX=install \
-        -DCMAKE_BUILD_TYPE=Release \
-    steps:
-    - uses: actions/checkout@v6
-    - name: ndk-fix-debug
-      run: sed -i -e '/^  -g$/d' $ANDROID_NDK_LATEST_HOME/build/cmake/android-legacy.toolchain.cmake
-    - uses: actions/download-artifact@v7
-      with:
-        name: opencv-mobile-4.13.0-no-openmp-source
-    - name: setup-opencv-source
-      run: |
-        unzip -q opencv-mobile-4.13.0-no-openmp.zip
-        echo "SOURCE_DIR=opencv-mobile-4.13.0-no-openmp" >> $GITHUB_ENV
-        echo "PACKAGE_NAME=opencv-mobile-4.13.0-no-openmp-android" >> $GITHUB_ENV
     - name: build-armeabi-v7a
       run: |
-        cd ${{ env.SOURCE_DIR }}
+        cd opencv-mobile-4.13.0-no-openmp
         mkdir build-armeabi-v7a && cd build-armeabi-v7a
         cmake ${{ env.COMMON_CMAKE_OPTIONS }} -DANDROID_ABI="armeabi-v7a" -DANDROID_ARM_NEON=ON \
             `cat ../options.txt` -DBUILD_opencv_world=OFF -DOPENCV_DISABLE_FILESYSTEM_SUPPORT=ON ..
         cmake --build . -j $(nproc)
         cmake --build . --target install
+
     - name: build-arm64-v8a
       run: |
-        cd ${{ env.SOURCE_DIR }}
+        cd opencv-mobile-4.13.0-no-openmp
         mkdir build-arm64-v8a && cd build-arm64-v8a
         cmake ${{ env.COMMON_CMAKE_OPTIONS }} -DANDROID_ABI="arm64-v8a" \
             `cat ../options.txt` -DBUILD_opencv_world=OFF -DOPENCV_DISABLE_FILESYSTEM_SUPPORT=ON ..
         cmake --build . -j $(nproc)
         cmake --build . --target install
+
     - name: build-x86
       run: |
-        cd ${{ env.SOURCE_DIR }}
+        cd opencv-mobile-4.13.0-no-openmp
         mkdir build-x86 && cd build-x86
         cmake ${{ env.COMMON_CMAKE_OPTIONS }} -DANDROID_ABI="x86" \
             `cat ../options.txt` -DBUILD_opencv_world=OFF -DOPENCV_DISABLE_FILESYSTEM_SUPPORT=ON ..
         cmake --build . -j $(nproc)
         cmake --build . --target install
+
     - name: build-x86_64
       run: |
-        cd ${{ env.SOURCE_DIR }}
+        cd opencv-mobile-4.13.0-no-openmp
         mkdir build-x86_64 && cd build-x86_64
         cmake ${{ env.COMMON_CMAKE_OPTIONS }} -DANDROID_ABI="x86_64" \
             `cat ../options.txt` -DBUILD_opencv_world=OFF -DOPENCV_DISABLE_FILESYSTEM_SUPPORT=ON ..
         cmake --build . -j $(nproc)
         cmake --build . --target install
-    - name: package-android
+
+    - name: package
       run: |
-        cd ${{ env.SOURCE_DIR }}
-        mkdir -p sdk/native/jni/include
-        mkdir -p sdk/native/jni/abi
-        cp -r build-arm64-v8a/install/include/* sdk/native/jni/include/
-        cp build-armeabi-v7a/install/lib/*.a sdk/native/jni/abi/armeabi-v7a/
-        cp build-arm64-v8a/install/lib/*.a sdk/native/jni/abi/arm64-v8a/
-        cp build-x86/install/lib/*.a sdk/native/jni/abi/x86/
-        cp build-x86_64/install/lib/*.a sdk/native/jni/abi/x86_64/
-        zip -9 -r ${{ env.PACKAGE_NAME }}.zip sdk
-    - name: upload-android
+        mkdir opencv-mobile-4.13.0-no-openmp-android
+        cp -rf opencv-mobile-4.13.0-no-openmp/build-x86/install/* opencv-mobile-4.13.0-no-openmp-android/
+        cp -rf opencv-mobile-4.13.0-no-openmp/build-x86_64/install/* opencv-mobile-4.13.0-no-openmp-android/
+        cp -rf opencv-mobile-4.13.0-no-openmp/build-armeabi-v7a/install/* opencv-mobile-4.13.0-no-openmp-android/
+        cp -rf opencv-mobile-4.13.0-no-openmp/build-arm64-v8a/install/* opencv-mobile-4.13.0-no-openmp-android/
+        zip -9 -r opencv-mobile-4.13.0-no-openmp-android.zip opencv-mobile-4.13.0-no-openmp-android
+
+    - name: upload
       uses: actions/upload-artifact@v6
       with:
-        name: ${{ env.PACKAGE_NAME }}
+        name: opencv-mobile-4.13.0-no-openmp-android
         path: opencv-mobile-4.13.0-no-openmp-android.zip
